@@ -443,73 +443,31 @@
 
 
 <h3>Master Students </h3>
+
 <style>
-  .student-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+  .students-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 30px;
+    padding-left: 20px;
   }
 
-  .student {
-    flex: 1 1 30%;
-    max-width: 30%;
-    min-width: 200px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .student p {
-    margin: 0;
+  .student-card {
     text-align: left;
   }
 
-  .student::before {
-    content: "•";
+  .student-name::before {
+    content: "• ";
+    color: #333;
     margin-right: 5px;
-    font-size: 20px;
-    color: #555;
   }
 
-  .student img {
-    width: 100px;
-    height: 100px;
-    object-fit: cover;
-    border-radius: 50%;
-  }
-</style>
-
-<h3>Master Students (Thesis Track)</h3>
-<style>
-  .student-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+  .student-name {
+    font-weight: 500;
+    margin-bottom: 10px;
   }
 
-  .student {
-    flex: 1 1 30%;
-    max-width: 30%;
-    min-width: 200px;
-  }
-
-  .student p {
-    margin: 0 0 8px 0;
-    text-align: left;
-    position: relative;
-    padding-left: 15px;
-  }
-
-  .student p::before {
-    content: "•";
-    position: absolute;
-    left: 0;
-    color: #555;
-    font-size: 20px;
-    line-height: 1;
-  }
-
-  .student img {
+  .student-photo {
     width: 100px;
     height: 100px;
     object-fit: cover;
@@ -519,32 +477,33 @@
   }
 </style>
 
-<div class="student-grid">
-  <div class="student">
-    <p>Emily Liu</p>
-    <img src="/img/Emily.png" alt="Emily Liu">
+<div class="students-grid">
+  <div class="student-card">
+    <p class="student-name">Emily Liu</p>
+    <img src="/img/Emily.png" alt="Emily Liu" class="student-photo">
   </div>
-  <div class="student">
-    <p>Sandeep Muhurakola</p>
+  <div class="student-card">
+    <p class="student-name">Sandeep Muhurakola</p>
   </div>
-  <div class="student">
-    <p>Zak Zapata</p>
-    <img src="/img/zak_b.png" alt="Zak Zapata">
+  <div class="student-card">
+    <p class="student-name">Zak Zapata</p>
+    <img src="/img/zak_b.png" alt="Zak Zapata" class="student-photo">
   </div>
-  <div class="student">
-    <p>Ashley Marines</p>
-    <img src="/img/Ashley.png" alt="Ashley Marines">
+  <div class="student-card">
+    <p class="student-name">Ashley Marines</p>
+    <img src="/img/Ashley.png" alt="Ashley Marines" class="student-photo">
   </div>
-  <div class="student">
-    <p>Naga Sasitha Polavarapu</p>
+  <div class="student-card">
+    <p class="student-name">Naga Sasitha Polavarapu</p>
   </div>
-  <div class="student">
-    <p>Sushma Ponugoti</p>
+  <div class="student-card">
+    <p class="student-name">Sushma Ponugoti</p>
   </div>
-  <div class="student">
-    <p>Jahnavi Krishna Koda</p>
+  <div class="student-card">
+    <p class="student-name">Jahnavi Krishna Koda</p>
   </div>
 </div>
+
 
 
 
