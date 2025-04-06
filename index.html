@@ -451,10 +451,24 @@
   }
 
   .student {
-    flex: 1 1 30%; /* roughly 3 per row */
+    flex: 1 1 30%;
     max-width: 30%;
     min-width: 200px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .student p {
+    margin: 0;
+    text-align: left;
+  }
+
+  .student::before {
+    content: "•";
+    margin-right: 5px;
+    font-size: 20px;
+    color: #555;
   }
 
   .student img {
@@ -480,17 +494,7 @@
   <div class="student">
     <p>Ashley Marines</p>
     <img src="/img/Ashley.png" alt="Ashley Marines">
-  </div>
-  <div class="student">
-    <p>Naga Sasitha Polavarapu</p>
-  </div>
-  <div class="student">
-    <p>Sushma Ponugoti</p>
-  </div>
-  <div class="student">
-    <p>Jahnavi Krishna Koda</p>
-  </div>
-</div>
+
 
  
    </div>
