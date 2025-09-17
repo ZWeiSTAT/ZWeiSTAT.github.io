@@ -899,6 +899,15 @@ article .article-metadata {
   transition: all 0.2s ease-out;
 }
 
+.student-name {
+  font-size: 1rem;   /* normal size for the name */
+}
+
+.student-name .term {
+  font-size: 0.8em;  /* smaller size for the semester */
+  color: #666;       /* optional: make it a muted gray */
+}
+
 .card .card-image.hover-overlay:after {
   display: block;
   position: absolute;
