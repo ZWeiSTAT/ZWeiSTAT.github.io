@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Lec 13 - Numerical optimization (cont.)</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="DASC 5345" />
+    <script src="libs/header-attrs-2.25/header-attrs.js"></script>
+    <link rel="stylesheet" href="slides.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Lec 13 - Numerical optimization (cont.)
+]
+.subtitle[
+## <br/> Statistical Computing and Computation
+]
+.author[
+### DASC 5345
+]
+.date[
+### <br/> Dr. Zheng Wei
+]
+
+---
+
+exclude: true
+
+
+
+
+
+
+
+
+```python
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
+import timeit
+
+plt.rcParams['figure.dpi'] = 200
+
+from scipy import optimize
+```
+
+
+```r
+knitr::opts_chunk$set(
+  fig.align="center",
+  cache=FALSE
+)
+```
+
+
+```r
+local({
+  hook_err_old &lt;- knitr::knit_hooks$get("error")  # save the old hook
+  knitr::knit_hooks$set(error = function(x, options) {
+    # now do whatever you want to do with x, and pass
+    # the new x to the old hook
+    x = sub("## \n## Detailed traceback:\n.*$", "", x)
+    x = sub("Error in py_call_impl\\(.*?\\)\\: ", "", x)
+    hook_err_old(x, options)
+  })
+  
+  hook_warn_old &lt;- knitr::knit_hooks$get("warning")  # save the old hook
+  knitr::knit_hooks$set(warning = function(x, options) {
+    x = sub("&lt;string&gt;:1: ", "", x)
+    hook_warn_old(x, options)
+  })
+})
+```
+
+
+
+
+
+
+
+
+---
+
+## Method Summary
+
+&lt;br/&gt;
+
+| SciPy Method | Description                                                    | Gradient | Hessian  |
+|:-------------|:---------------------------------------------------------------|:--------:|:--------:|
+| ---          | Newton's method (naive)                                        |    ✓     |    ✓     |
+| ---          | Conjugate Gradient (naive)                                     |    ✓     |    ✓     |
+| CG           | Nonlinear Conjugate Gradient (Polak and Ribiere variation)     |    ✓     |    ✗     |
+| Newton-CG    | Truncated Newton method (Newton w/ CG step direction)          |    ✓     | Optional |
+| BFGS         | Broyden, Fletcher, Goldfarb, and Shanno (Quasi-newton method)  | Optional |    ✗     |
+| L-BFGS-B     | Limited-memory BFGS (Quasi-newton method)  | Optional |    ✗     |
+| Nelder-Mead  | Nelder-Mead simplex reflection method                          |    ✗     |    ✗     |
+| 
+
+
+---
+
+## Methods collection
+
+
+```python
+def define_methods(x0, f, grad, hess, tol=1e-8):
+  return {
+    "naive_newton":    lambda: newtons_method(x0, f, grad, hess, tol=tol),
+    "naive_cg":        lambda: conjugate_gradient(x0, f, grad, hess, tol=tol),
+    "cg":              lambda: optimize.minimize(f, x0, jac=grad, method="CG", tol=tol),
+    "newton-cg":       lambda: optimize.minimize(f, x0, jac=grad, hess=None, method="Newton-CG", tol=tol),
+    "newton-cg w/ H":  lambda: optimize.minimize(f, x0, jac=grad, hess=hess, method="Newton-CG", tol=tol),
+    "bfgs":            lambda: optimize.minimize(f, x0, jac=grad, method="BFGS", tol=tol),
+    "bfgs w/o G":      lambda: optimize.minimize(f, x0, method="BFGS", tol=tol),
+    "l-bfgs":          lambda: optimize.minimize(f, x0, method="L-BFGS-B", tol=tol),
+    "nelder-mead":     lambda: optimize.minimize(f, x0, method="Nelder-Mead", tol=tol)
+  }
+```
+
+---
+
+## Method Timings
+
+```python
+x0 = (1.6, 1.1)
+f, grad, hess = mk_quad(0.7)
+methods = define_methods(x0, f, grad, hess)
+
+df = pd.DataFrame({
+  key: timeit.Timer(methods[key]).repeat(10, 100) for key in methods
+})
+  
+df
+```
+
+```
+##    naive_newton  naive_cg        cg  ...  bfgs w/o G    l-bfgs  nelder-mead
+## 0      0.056786  0.081589  0.043920  ...    0.190534  0.151765     0.377027
+## 1      0.047829  0.076546  0.038415  ...    0.181790  0.153543     0.312381
+## 2      0.048292  0.075373  0.038129  ...    0.183906  0.147942     0.314009
+## 3      0.048093  0.076851  0.039423  ...    0.181258  0.143721     0.313594
+## 4      0.047628  0.075589  0.037804  ...    0.183083  0.143790     0.311443
+## 5      0.047946  0.075950  0.037847  ...    0.184030  0.142053     0.318919
+## 6      0.049278  0.075216  0.037259  ...    0.182991  0.142102     0.315883
+## 7      0.049185  0.075523  0.037412  ...    0.181495  0.142873     0.317140
+## 8      0.048222  0.075857  0.036794  ...    0.183184  0.144824     0.321386
+## 9      0.047817  0.074650  0.037891  ...    0.180465  0.142923     0.310192
+## 
+## [10 rows x 9 columns]
+```
+
+---
+
+
+```python
+g = sns.catplot(data=df.melt(), y="variable", x="value", aspect=2)
+g.ax.set_xlabel("Time (100 iter)")
+g.ax.set_ylabel("")
+plt.show()
+```
+
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-3-1.png" width="75%" style="display: block; margin: auto;" /&gt;
+
+---
+
+## Timings across cost functions
+
+.pull-left[ .small[
+
+```python
+def time_cost_func(x0, name, cost_func, *args):
+  x0 = (1.6, 1.1)  
+  f, grad, hess = cost_func(*args)
+  methods = define_methods(x0, f, grad, hess)
+  
+  return ( pd.DataFrame({
+      key: timeit.Timer(methods[key]).repeat(10, 20) for key in methods
+    })
+    .melt()
+    .assign(cost_func = name)
+  )
+
+df = pd.concat([
+  time_cost_func(x0, "Well-cond quad", mk_quad, 0.7),
+  time_cost_func(x0, "Ill-cond quad", mk_quad, 0.02),
+  time_cost_func(x0, "Rosenbrock", mk_rosenbrock)
+])
+```
+] ]
+
+.pull-right[.small[
+
+```python
+df
+```
+
+```
+##         variable     value       cost_func
+## 0   naive_newton  0.009670  Well-cond quad
+## 1   naive_newton  0.010371  Well-cond quad
+## 2   naive_newton  0.009697  Well-cond quad
+## 3   naive_newton  0.010209  Well-cond quad
+## 4   naive_newton  0.009658  Well-cond quad
+## ..           ...       ...             ...
+## 85   nelder-mead  0.098499      Rosenbrock
+## 86   nelder-mead  0.098726      Rosenbrock
+## 87   nelder-mead  0.098207      Rosenbrock
+## 88   nelder-mead  0.098137      Rosenbrock
+## 89   nelder-mead  0.098988      Rosenbrock
+## 
+## [270 rows x 3 columns]
+```
+] ]
+
+---
+
+
+```python
+g = sns.catplot(data=df, y="variable", x="value", hue="cost_func", alpha=0.5, aspect=2)
+g.ax.set_xlabel("Time (20 iter)")
+g.ax.set_ylabel("")
+plt.show()
+```
+
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-6-3.png" width="1111" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+## Profiling - BFGS
+
+.small[
+
+```python
+import cProfile
+
+f, grad, hess = mk_quad(0.7)
+
+def run():
+  for i  in range(100):
+    optimize.minimize(fun = f, x0 = (1.6, 1.1), jac=grad, method="BFGS", tol=1e-11)
+
+cProfile.run('run()', sort="tottime")
+```
+
+```
+##          105804 function calls in 0.128 seconds
+## 
+##    Ordered by: internal time
+## 
+##    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+##       100    0.025    0.000    0.125    0.001 _optimize.py:1328(_minimize_bfgs)
+##      5800    0.013    0.000    0.013    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+##      2600    0.006    0.000    0.019    0.000 _optimize.py:194(vecnorm)
+##      1000    0.005    0.000    0.013    0.000 &lt;string&gt;:3(f)
+##       900    0.005    0.000    0.061    0.000 _dcsrch.py:201(__call__)
+##      3700    0.005    0.000    0.015    0.000 fromnumeric.py:71(_wrapreduction)
+##      1000    0.005    0.000    0.006    0.000 &lt;string&gt;:9(gradient)
+##      1800    0.004    0.000    0.004    0.000 _dcsrch.py:269(_iterate)
+##      2000    0.004    0.000    0.011    0.000 numeric.py:2378(array_equal)
+##       900    0.004    0.000    0.020    0.000 _linesearch.py:86(derphi)
+##       900    0.003    0.000    0.066    0.000 _linesearch.py:100(scalar_search_wolfe1)
+##      3100    0.003    0.000    0.003    0.000 {built-in method numpy.array}
+##       900    0.003    0.000    0.032    0.000 _linesearch.py:82(phi)
+##      2600    0.002    0.000    0.013    0.000 fromnumeric.py:2177(sum)
+##       900    0.002    0.000    0.069    0.000 _linesearch.py:37(line_search_wolfe1)
+##      1000    0.002    0.000    0.011    0.000 _differentiable_functions.py:39(wrapped)
+##       900    0.002    0.000    0.071    0.000 _optimize.py:1139(_line_search_wolfe12)
+##      2000    0.002    0.000    0.002    0.000 {built-in method numpy.arange}
+##      1000    0.002    0.000    0.016    0.000 _differentiable_functions.py:16(wrapped)
+##       900    0.002    0.000    0.007    0.000 _differentiable_functions.py:270(_update_x)
+##      3700    0.002    0.000    0.002    0.000 fromnumeric.py:72(&lt;dictcomp&gt;)
+##      1100    0.002    0.000    0.002    0.000 shape_base.py:23(atleast_1d)
+##      1000    0.002    0.000    0.004    0.000 _aliases.py:78(asarray)
+##      1000    0.002    0.000    0.030    0.000 _differentiable_functions.py:323(fun)
+##       100    0.001    0.000    0.128    0.001 _minimize.py:53(minimize)
+##      8400    0.001    0.000    0.001    0.000 {built-in method numpy.asarray}
+##       900    0.001    0.000    0.001    0.000 _dcsrch.py:174(__init__)
+##      1000    0.001    0.000    0.017    0.000 _differentiable_functions.py:329(grad)
+##      1100    0.001    0.000    0.017    0.000 _differentiable_functions.py:293(_update_fun)
+##      1100    0.001    0.000    0.012    0.000 _differentiable_functions.py:303(_update_grad)
+##      5100    0.001    0.000    0.001    0.000 {built-in method builtins.isinstance}
+##      1000    0.001    0.000    0.001    0.000 {method 'astype' of 'numpy.ndarray' objects}
+##      2000    0.001    0.000    0.006    0.000 {method 'all' of 'numpy.ndarray' objects}
+##      1000    0.001    0.000    0.006    0.000 fromnumeric.py:2814(amax)
+##       100    0.001    0.000    0.006    0.000 _differentiable_functions.py:166(__init__)
+##      2000    0.001    0.000    0.001    0.000 {method 'copy' of 'numpy.ndarray' objects}
+##      2000    0.001    0.000    0.005    0.000 _methods.py:61(_all)
+##      5100    0.001    0.000    0.001    0.000 multiarray.py:741(dot)
+##      2100    0.001    0.000    0.002    0.000 function_base.py:873(copy)
+##      1000    0.000    0.000    0.001    0.000 _aliases.py:236(astype)
+##       900    0.000    0.000    0.000    0.000 {built-in method builtins.min}
+##      3700    0.000    0.000    0.000    0.000 {method 'items' of 'dict' objects}
+##       100    0.000    0.000    0.001    0.000 twodim_base.py:158(eye)
+##      1000    0.000    0.000    0.001    0.000 types.py:176(__get__)
+##       900    0.000    0.000    0.000    0.000 _linesearch.py:27(_check_c1_c2)
+##      2600    0.000    0.000    0.000    0.000 fromnumeric.py:2172(_sum_dispatcher)
+##       100    0.000    0.000    0.001    0.000 linalg.py:2383(norm)
+##      1000    0.000    0.000    0.000    0.000 _funcs.py:12(atleast_nd)
+##       100    0.000    0.000    0.001    0.000 _differentiable_functions.py:55(_wrapper_hess)
+##      1000    0.000    0.000    0.000    0.000 numeric.py:1855(isscalar)
+##      2000    0.000    0.000    0.000    0.000 numeric.py:2374(_array_equal_dispatcher)
+##      2100    0.000    0.000    0.000    0.000 function_base.py:869(_copy_dispatcher)
+##         1    0.000    0.000    0.128    0.128 &lt;string&gt;:2(run)
+##      1000    0.000    0.000    0.000    0.000 enum.py:801(value)
+##       100    0.000    0.000    0.006    0.000 _optimize.py:203(_prepare_scalar_function)
+##      1400    0.000    0.000    0.000    0.000 {built-in method builtins.len}
+##      1200    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+##       100    0.000    0.000    0.000    0.000 _minimize.py:1066(standardize_constraints)
+##       900    0.000    0.000    0.000    0.000 {method 'pop' of 'dict' objects}
+##      1000    0.000    0.000    0.000    0.000 {built-in method builtins.hasattr}
+##       900    0.000    0.000    0.000    0.000 _util.py:1061(_call_callback_maybe_halt)
+##      1200    0.000    0.000    0.000    0.000 {built-in method numpy.asanyarray}
+##       900    0.000    0.000    0.000    0.000 {built-in method builtins.abs}
+##      1000    0.000    0.000    0.000    0.000 fromnumeric.py:2687(_max_dispatcher)
+##       100    0.000    0.000    0.000    0.000 shape_base.py:81(atleast_2d)
+##      1100    0.000    0.000    0.000    0.000 shape_base.py:19(_atleast_1d_dispatcher)
+##       100    0.000    0.000    0.000    0.000 numerictypes.py:357(issubdtype)
+##       100    0.000    0.000    0.000    0.000 _aliases.py:487(isdtype)
+##       100    0.000    0.000    0.000    0.000 {method 'dot' of 'numpy.ndarray' objects}
+##       200    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+##       200    0.000    0.000    0.000    0.000 numerictypes.py:283(issubclass_)
+##       500    0.000    0.000    0.000    0.000 {built-in method builtins.issubclass}
+##       100    0.000    0.000    0.001    0.000 _internal.py:26(wrapped_f)
+##       100    0.000    0.000    0.001    0.000 fromnumeric.py:2322(any)
+##       100    0.000    0.000    0.000    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+##       100    0.000    0.000    0.000    0.000 {method 'flatten' of 'numpy.ndarray' objects}
+##       800    0.000    0.000    0.000    0.000 {built-in method builtins.callable}
+##       100    0.000    0.000    0.000    0.000 {built-in method numpy.zeros}
+##       100    0.000    0.000    0.000    0.000 _differentiable_functions.py:35(_wrapper_grad)
+##       100    0.000    0.000    0.000    0.000 {method 'any' of 'numpy.ndarray' objects}
+##       100    0.000    0.000    0.000    0.000 {method 'ravel' of 'numpy.ndarray' objects}
+##       100    0.000    0.000    0.000    0.000 _differentiable_functions.py:13(_wrapper_fun)
+##       100    0.000    0.000    0.000    0.000 _methods.py:55(_any)
+##       100    0.000    0.000    0.000    0.000 _array_api.py:114(array_namespace)
+##       100    0.000    0.000    0.000    0.000 _optimize.py:160(_check_positive_definite)
+##       100    0.000    0.000    0.000    0.000 _base.py:1401(issparse)
+##       100    0.000    0.000    0.000    0.000 linalg.py:140(isComplexType)
+##       200    0.000    0.000    0.000    0.000 {built-in method _operator.index}
+##       100    0.000    0.000    0.000    0.000 _optimize.py:175(_check_unknown_options)
+##       100    0.000    0.000    0.000    0.000 _differentiable_functions.py:258(nfev)
+##       100    0.000    0.000    0.000    0.000 _optimize.py:88(_wrap_callback)
+##       100    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+##       100    0.000    0.000    0.000    0.000 fromnumeric.py:2317(_any_dispatcher)
+##         1    0.000    0.000    0.128    0.128 {built-in method builtins.exec}
+##       100    0.000    0.000    0.000    0.000 {method 'setdefault' of 'dict' objects}
+##       100    0.000    0.000    0.000    0.000 _differentiable_functions.py:262(ngev)
+##       100    0.000    0.000    0.000    0.000 linalg.py:2379(_norm_dispatcher)
+##       100    0.000    0.000    0.000    0.000 _optimize.py:283(hess)
+##       100    0.000    0.000    0.000    0.000 shape_base.py:77(_atleast_2d_dispatcher)
+##         1    0.000    0.000    0.128    0.128 &lt;string&gt;:1(&lt;module&gt;)
+##         1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+```
+]
+
+---
+
+## Profiling - Nelder-Mead
+
+.small[
+
+```python
+def run():
+  for i  in range(100):
+    optimize.minimize(fun = f, x0 = (1.6, 1.1), method="Nelder-Mead", tol=1e-11)
+
+cProfile.run('run()', sort="tottime")
+```
+
+```
+##          593804 function calls in 0.575 seconds
+## 
+##    Ordered by: internal time
+## 
+##    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+##       100    0.184    0.002    0.571    0.006 _optimize.py:682(_minimize_neldermead)
+##     18600    0.075    0.000    0.189    0.000 &lt;string&gt;:3(f)
+##     38000    0.074    0.000    0.074    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+##     28500    0.033    0.000    0.105    0.000 fromnumeric.py:71(_wrapreduction)
+##     18600    0.032    0.000    0.248    0.000 _optimize.py:537(function_wrapper)
+##     18600    0.017    0.000    0.089    0.000 fromnumeric.py:2177(sum)
+##     29400    0.016    0.000    0.043    0.000 fromnumeric.py:53(_wrapfunc)
+##     18800    0.013    0.000    0.013    0.000 {built-in method numpy.array}
+##     18600    0.013    0.000    0.013    0.000 {built-in method numpy.arange}
+##     19600    0.012    0.000    0.012    0.000 {method 'take' of 'numpy.ndarray' objects}
+##     28500    0.011    0.000    0.011    0.000 fromnumeric.py:72(&lt;dictcomp&gt;)
+##      9800    0.011    0.000    0.011    0.000 {method 'argsort' of 'numpy.ndarray' objects}
+##     19600    0.009    0.000    0.033    0.000 fromnumeric.py:95(take)
+##      9600    0.007    0.000    0.014    0.000 fromnumeric.py:1768(ravel)
+##     18600    0.007    0.000    0.007    0.000 {method 'copy' of 'numpy.ndarray' objects}
+##      9700    0.007    0.000    0.042    0.000 fromnumeric.py:2692(max)
+##     47000    0.007    0.000    0.007    0.000 {built-in method builtins.isinstance}
+##      9800    0.005    0.000    0.024    0.000 fromnumeric.py:1025(argsort)
+##     18600    0.005    0.000    0.018    0.000 function_base.py:873(copy)
+##     18600    0.005    0.000    0.007    0.000 numeric.py:1855(isscalar)
+##     29600    0.004    0.000    0.004    0.000 {built-in method builtins.getattr}
+##      9600    0.003    0.000    0.003    0.000 {method 'ravel' of 'numpy.ndarray' objects}
+##     28500    0.003    0.000    0.003    0.000 {method 'items' of 'dict' objects}
+##     18800    0.003    0.000    0.003    0.000 {built-in method numpy.asarray}
+##     18600    0.002    0.000    0.002    0.000 function_base.py:869(_copy_dispatcher)
+##     18600    0.002    0.000    0.002    0.000 fromnumeric.py:2172(_sum_dispatcher)
+##     19600    0.002    0.000    0.002    0.000 fromnumeric.py:91(_take_dispatcher)
+##      9800    0.002    0.000    0.002    0.000 {built-in method numpy.asanyarray}
+##      9600    0.002    0.000    0.002    0.000 _util.py:1061(_call_callback_maybe_halt)
+##       100    0.001    0.000    0.574    0.006 _minimize.py:53(minimize)
+##      9800    0.001    0.000    0.001    0.000 fromnumeric.py:1021(_argsort_dispatcher)
+##      9600    0.001    0.000    0.001    0.000 fromnumeric.py:1764(_ravel_dispatcher)
+##      9700    0.001    0.000    0.001    0.000 fromnumeric.py:2687(_max_dispatcher)
+##       200    0.000    0.000    0.000    0.000 shape_base.py:23(atleast_1d)
+##       100    0.000    0.000    0.000    0.000 numeric.py:274(full)
+##         1    0.000    0.000    0.575    0.575 &lt;string&gt;:1(run)
+##       100    0.000    0.000    0.000    0.000 _minimize.py:1066(standardize_constraints)
+##       100    0.000    0.000    0.000    0.000 numerictypes.py:357(issubdtype)
+##       200    0.000    0.000    0.000    0.000 numerictypes.py:283(issubclass_)
+##       200    0.000    0.000    0.000    0.000 {built-in method numpy.empty}
+##       100    0.000    0.000    0.001    0.000 fromnumeric.py:2322(any)
+##       100    0.000    0.000    0.000    0.000 {method 'flatten' of 'numpy.ndarray' objects}
+##       300    0.000    0.000    0.000    0.000 {built-in method builtins.issubclass}
+##       300    0.000    0.000    0.000    0.000 {built-in method builtins.len}
+##       100    0.000    0.000    0.000    0.000 fromnumeric.py:2836(min)
+##       100    0.000    0.000    0.000    0.000 _optimize.py:530(_wrap_scalar_function_maxfun_validation)
+##       200    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+##       200    0.000    0.000    0.000    0.000 {method 'setdefault' of 'dict' objects}
+##       200    0.000    0.000    0.000    0.000 shape_base.py:19(_atleast_1d_dispatcher)
+##       100    0.000    0.000    0.000    0.000 _optimize.py:175(_check_unknown_options)
+##       200    0.000    0.000    0.000    0.000 {built-in method builtins.callable}
+##       100    0.000    0.000    0.000    0.000 _optimize.py:88(_wrap_callback)
+##       100    0.000    0.000    0.000    0.000 fromnumeric.py:2317(_any_dispatcher)
+##       100    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+##         1    0.000    0.000    0.575    0.575 {built-in method builtins.exec}
+##       100    0.000    0.000    0.000    0.000 multiarray.py:1080(copyto)
+##       100    0.000    0.000    0.000    0.000 fromnumeric.py:2831(_min_dispatcher)
+##         1    0.000    0.000    0.575    0.575 &lt;string&gt;:1(&lt;module&gt;)
+##         1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+```
+]
+
+---
+
+## `optimize.minimize()` output
+
+
+```python
+f, grad, hess = mk_quad(0.7)
+```
+
+.pull-left[ .small[
+
+```python
+optimize.minimize(fun = f, x0 = (1.6, 1.1), jac=grad, method="BFGS")
+```
+
+```
+##   message: Optimization terminated successfully.
+##   success: True
+##    status: 0
+##       fun: 1.2739256453438355e-11
+##         x: [-5.318e-07 -8.843e-06]
+##       nit: 6
+##       jac: [-3.510e-07 -2.860e-06]
+##  hess_inv: [[ 1.515e+00 -3.438e-03]
+##             [-3.438e-03  3.035e+00]]
+##      nfev: 7
+##      njev: 7
+```
+] ]
+
+.pull-right[ .small[
+
+```python
+optimize.minimize(fun = f, x0 = (1.6, 1.1), jac=grad, hess=hess, method="Newton-CG")
+```
+
+```
+##  message: Optimization terminated successfully.
+##  success: True
+##   status: 0
+##      fun: 2.3418652989289317e-12
+##        x: [ 0.000e+00  3.806e-06]
+##      nit: 11
+##      jac: [ 0.000e+00  4.102e-06]
+##     nfev: 12
+##     njev: 12
+##     nhev: 11
+```
+] ]
+
+
+---
+
+## Collect
+
+.pull-left[ .small[
+
+```python
+def run_collect(name, x0, cost_func, *args, tol=1e-8, skip=[]):
+  f, grad, hess = cost_func(*args)
+  methods = define_methods(x0, f, grad, hess, tol)
+  
+  res = []
+  for method in methods:
+    if method in skip:
+      continue
+    
+    x = methods[method]()
+    
+    d = {
+      "name":    name,
+      "method":  method,
+      "nit":     x["nit"],
+      "nfev":    x["nfev"],
+      "njev":    x.get("njev"),
+      "nhev":    x.get("nhev"),
+      "success": x["success"],
+      "message": x["message"]
+    }
+    res.append( pd.DataFrame(d, index=[1]) )
+  
+  return pd.concat(res)
+
+df = pd.concat([
+  run_collect(name, (1.6, 1.1), cost_func, arg, skip=['naive_newton', 'naive_cg']) 
+  for name, cost_func, arg in zip(
+    ("Well-cond quad", "Ill-cond quad", "Rosenbrock"), 
+    (mk_quad, mk_quad, mk_rosenbrock), 
+    (0.7,0.02, None)
+  )
+])
+```
+] ]
+
+.pull-right[ .small[
+
+```python
+df.drop(["message"], axis=1)
+```
+
+```
+##              name          method  nit  nfev  njev  nhev  success
+## 1  Well-cond quad              cg    2     5     5  None     True
+## 1  Well-cond quad       newton-cg    5     6    13     0     True
+## 1  Well-cond quad  newton-cg w/ H   15    15    15    15     True
+## 1  Well-cond quad            bfgs    8     9     9  None     True
+## 1  Well-cond quad      bfgs w/o G    8    27     9  None     True
+## 1  Well-cond quad          l-bfgs    6    21     7  None     True
+## 1  Well-cond quad     nelder-mead   76   147  None  None     True
+## 1   Ill-cond quad              cg    9    17    17  None     True
+## 1   Ill-cond quad       newton-cg    3     4     9     0     True
+## 1   Ill-cond quad  newton-cg w/ H   72   136   136    72     True
+## 1   Ill-cond quad            bfgs    5    11    11  None     True
+## 1   Ill-cond quad      bfgs w/o G    5    33    11  None     True
+## 1   Ill-cond quad          l-bfgs    5    30    10  None     True
+## 1   Ill-cond quad     nelder-mead  102   198  None  None     True
+## 1      Rosenbrock              cg   17    52    48  None     True
+## 1      Rosenbrock       newton-cg   18    22    60     0     True
+## 1      Rosenbrock  newton-cg w/ H   17    21    21    17     True
+## 1      Rosenbrock            bfgs   23    26    26  None     True
+## 1      Rosenbrock      bfgs w/o G   23    78    26  None     True
+## 1      Rosenbrock          l-bfgs   19    75    25  None     True
+## 1      Rosenbrock     nelder-mead   96   183  None  None     True
+```
+] ]
+
+---
+
+
+```python
+sns.catplot(
+  y = "method", x = "value", hue = "variable", col="name", kind="bar",
+  data = df.melt(id_vars=["name","method"], value_vars=["nit", "nfev", "njev", "nhev"]).astype({"value": "float64"})
+)
+```
+
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-14-5.png" width="4196" style="display: block; margin: auto;" /&gt;&lt;img src="Lec13_files/figure-html/unnamed-chunk-14-6.png" width="1520" style="display: block; margin: auto;" /&gt;
+
+---
+
+## Exercise 1
+
+Try minimizing the following function using different optimization methods starting from `\(x_0 = [0,0]\)`, which appears to work best?
+
+$$
+`\begin{align}
+f(x) = \exp(x_1-1) + \exp(-x_2+1) + (x_1-x_2)^2
+\end{align}`
+$$
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-15-9.png" width="40%" style="display: block; margin: auto;" /&gt;
+
+---
+
+## Random starting locations
+
+.pull-left[
+
+```python
+rng = np.random.default_rng(seed=1234)
+x0s = rng.uniform(-2,2, (100,2))
+
+df = pd.concat([
+  run_collect(name, x0, cost_func, arg, skip=['naive_newton', 'naive_cg']) 
+  for name, cost_func, arg in zip(
+    ("Well-cond quad", "Ill-cond quad", "Rosenbrock"), 
+    (mk_quad, mk_quad, mk_rosenbrock), 
+    (0.7,0.02, None)
+  )
+  for x0 in x0s
+])
+```
+]
+
+.pull-right[.small[
+
+```python
+df.drop(["message"], axis=1)
+```
+
+```
+##               name          method  nit  nfev  njev  nhev  success
+## 1   Well-cond quad              cg    2     5     5  None     True
+## 1   Well-cond quad       newton-cg    5     6    13     0     True
+## 1   Well-cond quad  newton-cg w/ H   15    15    15    15     True
+## 1   Well-cond quad            bfgs    6     7     7  None     True
+## 1   Well-cond quad      bfgs w/o G    6    21     7  None     True
+## ..             ...             ...  ...   ...   ...   ...      ...
+## 1       Rosenbrock  newton-cg w/ H   17    17    17    17     True
+## 1       Rosenbrock            bfgs   26    31    31  None     True
+## 1       Rosenbrock      bfgs w/o G   26    93    31  None     True
+## 1       Rosenbrock          l-bfgs   18    57    19  None     True
+## 1       Rosenbrock     nelder-mead   75   145  None  None     True
+## 
+## [2100 rows x 7 columns]
+```
+] ]
+
+---
+
+## Performance (random start)
+
+
+```python
+sns.catplot(
+  y = "method", x = "value", hue = "variable", col="name", kind="bar",
+  data = df.melt(id_vars=["name","method"], value_vars=["nit", "nfev", "njev", "nhev"]).astype({"value": "float64"})
+).set(
+  xlabel="", ylabel=""
+)
+```
+
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-18-11.png" width="4144" style="display: block; margin: auto;" /&gt;&lt;img src="Lec13_files/figure-html/unnamed-chunk-18-12.png" width="1520" style="display: block; margin: auto;" /&gt;
+
+---
+
+## MVN Cost Function
+
+.pull-left[
+
+For an `\(n\)`-dimensional multivariate normal we define &lt;br/&gt;
+the `\(n \times 1\)` vectors `\(x\)` and `\(\mu\)` and the `\(n \times n\)` &lt;br/&gt;
+covariance matrix `\(\Sigma\)`,
+
+&lt;br/&gt;
+
+.small[
+$$
+`\begin{align}
+f(x) &amp;= \frac{1}{\sqrt{\det(2\pi\Sigma)}} \exp \left[-\frac{1}{2} (x-\mu)^T \Sigma^{-1} (x-\mu) \right] \\
+\\
+\nabla f(x) &amp;= -f(x) \Sigma^{-1}(x-\mu) \\
+\\
+\nabla^2 f(x) &amp;= f(x) \left( \Sigma^{-1}(x-\mu)(x-\mu)^T\Sigma^{-1} - \Sigma^{-1}\right) \\
+\end{align}`
+$$
+] ]
+
+.pull-right[ .small[
+
+
+```python
+def mk_mvn(mu, Sigma):
+  Sigma_inv = np.linalg.inv(Sigma)
+  #norm_const = 1 / (np.sqrt(np.linalg.det(2*np.pi*Sigma)))
+  norm_const = 1
+  
+  def f(x):
+    x_m = x - mu
+    return -(norm_const * 
+      np.exp( -0.5 * (x_m.T @ Sigma_inv @ x_m).item() ))
+  
+  def grad(x):
+    return (-f(x) * Sigma_inv @ (x - mu))
+  
+  def hess(x):
+    n = len(x)
+    x_m = x - mu
+    return f(x) * ((Sigma_inv @ x_m).reshape((n,1)) @ (x_m.T @ Sigma_inv).reshape((1,n)) - Sigma_inv)
+  
+  return f, grad, hess
+```
+] ]
+
+.footnote[From Section 8.1.1 of the [Matrix Cookbook](https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf)]
+
+
+---
+
+## Gradient checking
+
+One of the most common issues when implementing an optimizer is to get the gradient calculation wrong which can produce problematic results. It is possible to numerically check the gradient function by comparing results between the gradient function and finite differences from the objective function via `optimize.check_grad()`.
+
+.pull-left[
+
+```python
+# 2d
+f, grad, hess = mk_mvn(np.zeros(2), np.eye(2,2))
+optimize.check_grad(f, grad, [0,0])
+```
+
+```
+## 1.0536712127723509e-08
+```
+
+```python
+optimize.check_grad(f, grad, [1,1])
+```
+
+```
+## 2.8653603296584263e-09
+```
+
+
+```python
+# 4d
+f, grad, hess = mk_mvn(np.zeros(4), np.eye(4,4))
+optimize.check_grad(f, grad, [0,0,0,0])
+```
+
+```
+## 1.4901161193847656e-08
+```
+
+```python
+optimize.check_grad(f, grad, [1,1,1,1])
+```
+
+```
+## 2.346240979278491e-10
+```
+]
+
+.pull-right[
+
+```python
+# 20d
+f, grad, hess = mk_mvn(np.zeros(20), np.eye(20))
+optimize.check_grad(f, grad, np.zeros(20))
+```
+
+```
+## 3.332000937312528e-08
+```
+
+```python
+optimize.check_grad(f, grad, np.ones(20))
+```
+
+```
+## 7.079924060068647e-13
+```
+
+
+```python
+# 50d
+f, grad, hess = mk_mvn(np.zeros(50), np.eye(50))
+optimize.check_grad(f, grad, np.zeros(50))
+```
+
+```
+## 5.268356063861754e-08
+```
+
+```python
+optimize.check_grad(f, grad, np.ones(50))
+```
+
+```
+## 8.383419667181018e-19
+```
+]
+
+---
+
+## Testing optimizers
+
+.pull-left[ .small[
+
+```python
+f, grad, hess = mk_mvn(np.zeros(4), np.eye(4,4))
+optimize.minimize(fun=f, x0=[1,1,1,1], jac=grad, method="CG", tol=1e-11)
+```
+
+```
+##  message: Optimization terminated successfully.
+##  success: True
+##   status: 0
+##      fun: -1.0
+##        x: [ 6.467e-16  6.467e-16  6.467e-16  6.467e-16]
+##      nit: 3
+##      jac: [ 6.467e-16  6.467e-16  6.467e-16  6.467e-16]
+##     nfev: 8
+##     njev: 8
+```
+
+```python
+optimize.minimize(fun=f, x0=[1,1,1,1], jac=grad, method="BFGS", tol=1e-11)
+```
+
+```
+##   message: Optimization terminated successfully.
+##   success: True
+##    status: 0
+##       fun: -1.0
+##         x: [ 9.805e-16  9.805e-16  9.805e-16  9.805e-16]
+##       nit: 5
+##       jac: [ 9.805e-16  9.805e-16  9.805e-16  9.805e-16]
+##  hess_inv: [[ 1.000e+00  1.327e-08  1.327e-08  1.327e-08]
+##             [ 1.327e-08  1.000e+00  1.327e-08  1.327e-08]
+##             [ 1.327e-08  1.327e-08  1.000e+00  1.327e-08]
+##             [ 1.327e-08  1.327e-08  1.327e-08  1.000e+00]]
+##      nfev: 10
+##      njev: 10
+```
+] ] 
+
+.pull-right[ .small[
+
+```python
+n = 20
+f, grad, hess = mk_mvn(np.zeros(n), np.eye(n,n))
+optimize.minimize(fun=f, x0=np.ones(n), jac=grad, method="CG", tol=1e-11)
+```
+
+```
+##  message: Optimization terminated successfully.
+##  success: True
+##   status: 0
+##      fun: -1.0
+##        x: [ 3.679e-19  3.679e-19 ...  3.679e-19  3.679e-19]
+##      nit: 2
+##      jac: [ 3.679e-19  3.679e-19 ...  3.679e-19  3.679e-19]
+##     nfev: 14
+##     njev: 14
+```
+] ]
+
+---
+
+## Unit MVNs
+
+.pull-left[
+
+```python
+df = pd.concat([
+  run_collect(
+    name, np.ones(n), mk_mvn, 
+    np.zeros(n), np.eye(n), 
+    tol=1e-10, 
+    skip=['naive_newton', 'naive_cg']
+  ) 
+  for name, n in zip(
+    ("2d", "5d", "10d", "20d", "50d"), 
+    (2, 5, 10, 20, 50)
+  )
+])
+```
+]
+
+.pull-right[ .small[
+
+```python
+df.drop(["message"], axis=1)
+```
+
+```
+##   name          method   nit   nfev  njev  nhev  success
+## 1   2d              cg     3      6     6  None     True
+## 1   2d       newton-cg     2      3     5     0     True
+## 1   2d  newton-cg w/ H     2      2     2     2     True
+## 1   2d            bfgs     4      8     8  None     True
+## 1   2d      bfgs w/o G     5    243    81  None     True
+## 1   2d          l-bfgs     5     21     7  None     True
+## 1   2d     nelder-mead    75    157  None  None     True
+## 1   5d              cg     3      8     8  None     True
+## 1   5d       newton-cg     4      8    12     0     True
+## 1   5d  newton-cg w/ H     4      7     7     4     True
+## 1   5d            bfgs     5     11    11  None     True
+## 1   5d      bfgs w/o G     4     60    10  None     True
+## 1   5d          l-bfgs     4     54     9  None     True
+## 1   5d     nelder-mead   297    529  None  None     True
+## 1  10d              cg     2     24    22  None     True
+## 1  10d       newton-cg     3      9    12     0     True
+## 1  10d  newton-cg w/ H     3      8     8     3     True
+## 1  10d            bfgs     3     12    12  None     True
+## 1  10d      bfgs w/o G     3    143    13  None     True
+## 1  10d          l-bfgs     3    110    10  None     True
+## 1  10d     nelder-mead  1408   2000  None  None    False
+## 1  20d              cg     2     14    14  None     True
+## 1  20d       newton-cg     3     10    13     0     True
+## 1  20d  newton-cg w/ H     3      9     9     3     True
+## 1  20d            bfgs     2     15    15  None     True
+## 1  20d      bfgs w/o G     2   1839    87  None    False
+## 1  20d          l-bfgs     3    210    10  None     True
+## 1  20d     nelder-mead  3217   4000  None  None    False
+## 1  50d              cg     0      1     1  None     True
+## 1  50d       newton-cg     1      1     1     0     True
+## 1  50d  newton-cg w/ H     2     10    10     2     True
+## 1  50d            bfgs     0      1     1  None     True
+## 1  50d      bfgs w/o G     0     51     1  None     True
+## 1  50d          l-bfgs     0     51     1  None     True
+## 1  50d     nelder-mead  8872  10000  None  None    False
+```
+] ]
+
+---
+
+## Adding correlation
+
+.pull-left[
+
+```python
+def build_Sigma(n):
+  S = np.full((n,n), 0.5)
+  np.fill_diagonal(S, 1)
+  return S
+
+df = pd.concat([
+  run_collect(
+    name, np.ones(n), mk_mvn, 
+    np.zeros(n), build_Sigma(n), 
+    tol=1e-9/n, 
+    skip=['naive_newton', 'naive_cg']
+  ) 
+  for name, n in zip(
+    ("2d", "5d", "10d", "20d", "50d"), 
+    (2, 5, 10, 20, 50)
+  )
+])
+```
+]
+
+.pull-right[ .small[
+
+```python
+df.drop(["message"], axis=1)
+```
+
+```
+##   name          method   nit   nfev  njev  nhev  success
+## 1   2d              cg    15     18    18  None    False
+## 1   2d       newton-cg     5      7    12     0     True
+## 1   2d  newton-cg w/ H     5      6     6     5     True
+## 1   2d            bfgs     3      7     7  None     True
+## 1   2d      bfgs w/o G     3     24     8  None    False
+## 1   2d          l-bfgs     5     21     7  None     True
+## 1   2d     nelder-mead    73    145  None  None     True
+## 1   5d              cg     5     19    19  None     True
+## 1   5d       newton-cg     5      7    12     0     True
+## 1   5d  newton-cg w/ H     5      6     6     5     True
+## 1   5d            bfgs     5      8     8  None     True
+## 1   5d      bfgs w/o G     5    498    81  None    False
+## 1   5d          l-bfgs     4     54     9  None     True
+## 1   5d     nelder-mead   224    421  None  None     True
+## 1  10d              cg    10     23    23  None    False
+## 1  10d       newton-cg     5      6    11     0     True
+## 1  10d  newton-cg w/ H     5      5     5     5     True
+## 1  10d            bfgs     4      9     9  None     True
+## 1  10d      bfgs w/o G     4    110    10  None     True
+## 1  10d          l-bfgs     5    110    10  None     True
+## 1  10d     nelder-mead  1151   1754  None  None     True
+## 1  20d              cg     5     25    25  None     True
+## 1  20d       newton-cg     4      5     9     0     True
+## 1  20d  newton-cg w/ H     4      4     4     4     True
+## 1  20d            bfgs     5      9     9  None     True
+## 1  20d      bfgs w/o G     7   1251    59  None    False
+## 1  20d          l-bfgs     6    231    11  None     True
+## 1  20d     nelder-mead  2745   4000  None  None    False
+## 1  50d              cg    11     31    31  None    False
+## 1  50d       newton-cg     4      5     9     0     True
+## 1  50d  newton-cg w/ H     4      4     4     4     True
+## 1  50d            bfgs     4      9     9  None     True
+## 1  50d      bfgs w/o G     5   3837    75  None    False
+## 1  50d          l-bfgs     6    510    10  None     True
+## 1  50d     nelder-mead  6447  10000  None  None    False
+```
+] ]
+
+---
+
+
+
+
+```python
+df
+```
+
+```
+##   name          method   nit   nfev  njev  nhev  success                                            message
+## 1   2d              cg    15     18    18  None    False  Desired error not necessarily achieved due to ...
+## 1   2d       newton-cg     5      7    12     0     True              Optimization terminated successfully.
+## 1   2d  newton-cg w/ H     5      6     6     5     True              Optimization terminated successfully.
+## 1   2d            bfgs     3      7     7  None     True              Optimization terminated successfully.
+## 1   2d      bfgs w/o G     3     24     8  None    False  Desired error not necessarily achieved due to ...
+## 1   2d          l-bfgs     5     21     7  None     True   CONVERGENCE: NORM OF PROJECTED GRADIENT &lt;= PGTOL
+## 1   2d     nelder-mead    73    145  None  None     True              Optimization terminated successfully.
+## 1   5d              cg     5     19    19  None     True              Optimization terminated successfully.
+## 1   5d       newton-cg     5      7    12     0     True              Optimization terminated successfully.
+## 1   5d  newton-cg w/ H     5      6     6     5     True              Optimization terminated successfully.
+## 1   5d            bfgs     5      8     8  None     True              Optimization terminated successfully.
+## 1   5d      bfgs w/o G     5    498    81  None    False  Desired error not necessarily achieved due to ...
+## 1   5d          l-bfgs     4     54     9  None     True  CONVERGENCE: RELATIVE REDUCTION OF F &lt;= FACTR*...
+## 1   5d     nelder-mead   224    421  None  None     True              Optimization terminated successfully.
+## 1  10d              cg    10     23    23  None    False  Desired error not necessarily achieved due to ...
+## 1  10d       newton-cg     5      6    11     0     True              Optimization terminated successfully.
+## 1  10d  newton-cg w/ H     5      5     5     5     True              Optimization terminated successfully.
+## 1  10d            bfgs     4      9     9  None     True              Optimization terminated successfully.
+## 1  10d      bfgs w/o G     4    110    10  None     True              Optimization terminated successfully.
+## 1  10d          l-bfgs     5    110    10  None     True  CONVERGENCE: RELATIVE REDUCTION OF F &lt;= FACTR*...
+## 1  10d     nelder-mead  1151   1754  None  None     True              Optimization terminated successfully.
+## 1  20d              cg     5     25    25  None     True              Optimization terminated successfully.
+## 1  20d       newton-cg     4      5     9     0     True              Optimization terminated successfully.
+## 1  20d  newton-cg w/ H     4      4     4     4     True              Optimization terminated successfully.
+## 1  20d            bfgs     5      9     9  None     True              Optimization terminated successfully.
+## 1  20d      bfgs w/o G     7   1251    59  None    False  Desired error not necessarily achieved due to ...
+## 1  20d          l-bfgs     6    231    11  None     True   CONVERGENCE: NORM OF PROJECTED GRADIENT &lt;= PGTOL
+## 1  20d     nelder-mead  2745   4000  None  None    False  Maximum number of function evaluations has bee...
+## 1  50d              cg    11     31    31  None    False  Desired error not necessarily achieved due to ...
+## 1  50d       newton-cg     4      5     9     0     True              Optimization terminated successfully.
+## 1  50d  newton-cg w/ H     4      4     4     4     True              Optimization terminated successfully.
+## 1  50d            bfgs     4      9     9  None     True              Optimization terminated successfully.
+## 1  50d      bfgs w/o G     5   3837    75  None    False  Desired error not necessarily achieved due to ...
+## 1  50d          l-bfgs     6    510    10  None     True  CONVERGENCE: RELATIVE REDUCTION OF F &lt;= FACTR*...
+## 1  50d     nelder-mead  6447  10000  None  None    False  Maximum number of function evaluations has bee...
+```
+
+---
+
+## What's going on?
+
+
+```python
+n = 50
+f, grad, hess = mk_mvn(np.zeros(n), build_Sigma(n))
+```
+
+.pull-left[ .small[
+
+```python
+optimize.minimize(f, np.ones(n), jac=grad, method="CG", tol=1e-10)
+```
+
+```
+##  message: Desired error not necessarily achieved due to precision loss.
+##  success: False
+##   status: 2
+##      fun: -0.9999999999999998
+##        x: [-1.439e-08 -1.417e-08 ... -1.597e-08 -1.609e-08]
+##      nit: 11
+##      jac: [ 1.769e-09  2.222e-09 ... -1.390e-09 -1.623e-09]
+##     nfev: 31
+##     njev: 31
+```
+
+```python
+optimize.minimize(f, np.ones(n), jac=grad, method="CG", tol=1e-8)
+```
+
+```
+##  message: Optimization terminated successfully.
+##  success: True
+##   status: 0
+##      fun: -0.9999999999999917
+##        x: [-9.187e-08 -9.187e-08 ... -9.191e-08 -9.192e-08]
+##      nit: 9
+##      jac: [-3.546e-09 -3.535e-09 ... -3.623e-09 -3.629e-09]
+##     nfev: 27
+##     njev: 27
+```
+] ]
+
+.pull-right[ .small[
+
+```python
+optimize.minimize(f, np.ones(n), jac=grad, method="BFGS", tol=1e-10)
+```
+
+```
+##   message: Optimization terminated successfully.
+##   success: True
+##    status: 0
+##       fun: -1.0
+##         x: [-7.080e-11 -7.080e-11 ... -7.082e-11 -7.083e-11]
+##       nit: 4
+##       jac: [-2.743e-12 -2.737e-12 ... -2.788e-12 -2.792e-12]
+##  hess_inv: [[ 1.490e+00  4.900e-01 ...  4.900e-01  4.900e-01]
+##             [ 4.900e-01  1.490e+00 ...  4.900e-01  4.900e-01]
+##             ...
+##             [ 4.900e-01  4.900e-01 ...  1.490e+00  4.900e-01]
+##             [ 4.900e-01  4.900e-01 ...  4.900e-01  1.490e+00]]
+##      nfev: 9
+##      njev: 9
+```
+] ]
+
+---
+
+
+```python
+sns.catplot(
+  y = "method", x = "value", hue = "variable", col="name", kind="bar",
+  data = df.melt(
+    id_vars=["name","method"], value_vars=["nit", "nfev", "njev", "nhev"]
+  ).astype(
+    {"value": "float64"}
+  ).query(
+    "name != '2d'"
+  )
+).set(
+  xscale="log", xlabel="", ylabel=""
+)
+```
+
+&lt;img src="Lec13_files/figure-html/unnamed-chunk-35-15.png" width="5483" style="display: block; margin: auto;" /&gt;&lt;img src="Lec13_files/figure-html/unnamed-chunk-35-16.png" width="2000" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+## Some general advice
+
+* Having access to the gradient is almost always helpful / necessary
+
+* Having access to the hessian can be helpful, but usually does not significantly improve things
+
+* In general, **BFGS** or **L-BFGS** should be a first choice for most problems (either well- or ill-conditioned)
+
+  * **CG** can perform better for well-conditioned problems with cheap function evaluations
+  
+&lt;img src="imgs/scipy_opt_summary.png" width="80%" style="display: block; margin: auto;" /&gt;
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightLines": true,
+"highlightStyle": "solarized-light",
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
